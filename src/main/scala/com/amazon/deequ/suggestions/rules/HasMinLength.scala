@@ -1,5 +1,5 @@
 /**
- * Copyright 2018 Amazon.com, Inc. or its affiliates. All Rights Reserved.
+ * Copyright 2022 Amazon.com, Inc. or its affiliates. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License"). You may not
  * use this file except in compliance with the License. A copy of the License
@@ -16,33 +16,36 @@
 
 package com.amazon.deequ.suggestions.rules
 
-import com.amazon.deequ.checks.Check
-import com.amazon.deequ.constraints.Constraint.completenessConstraint
+import com.amazon.deequ.constraints.Constraint.minLengthConstraint
 import com.amazon.deequ.profiles.ColumnProfile
+import com.amazon.deequ.profiles.StringColumnProfile
 import com.amazon.deequ.suggestions.CommonConstraintSuggestion
 import com.amazon.deequ.suggestions.ConstraintSuggestion
 
-/** If a column is complete in the sample, we suggest a NOT NULL constraint */
-case class CompleteIfCompleteRule() extends ConstraintRule[ColumnProfile] {
-
+case class HasMinLength() extends ConstraintRule[ColumnProfile] {
   override def shouldBeApplied(profile: ColumnProfile, numRecords: Long): Boolean = {
-    profile.completeness == 1.0
+    profile match {
+      case profile: StringColumnProfile => profile.minLength.isDefined
+      case _ => false
+    }
   }
 
   override def candidate(profile: ColumnProfile, numRecords: Long): ConstraintSuggestion = {
+    val stringProfile = profile.asInstanceOf[StringColumnProfile]
+    val minLength: Double = stringProfile.minLength.get
 
-    val constraint = completenessConstraint(profile.column, Check.IsOne)
+    val constraint = minLengthConstraint(profile.column, _ >= minLength)
 
     CommonConstraintSuggestion(
       constraint,
       profile.column,
-      "Completeness: " + profile.completeness.toString,
-      s"'${profile.column}' is not null",
+      "MinLength: " + minLength,
+      s"The length of '${profile.column}' >= $minLength",
       this,
-      s""".isComplete("${profile.column}")"""
+      s""".hasMinLength("${profile.column}", _ >= $minLength)"""
     )
   }
 
-  override val ruleDescription: String = "If a column is complete in the sample, " +
-    "we suggest a NOT NULL constraint"
+  override val ruleDescription: String = "If we see a string column, " +
+    "we suggest a corresponding Minimum length constraint"
 }
