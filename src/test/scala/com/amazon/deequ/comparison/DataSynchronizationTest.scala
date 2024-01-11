@@ -1,5 +1,5 @@
 /**
- * Copyright 2022 Amazon.com, Inc. or its affiliates. All Rights Reserved.
+ * Copyright 2023 Amazon.com, Inc. or its affiliates. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License"). You may not
  * use this file except in compliance with the License. A copy of the License
@@ -56,8 +56,8 @@ class DataSynchronizationTest extends AnyWordSpec with SparkContextSpec {
       val compCols = Map("name" -> "name")
       val assertion: Double => Boolean = _ >= 0.60
 
-      val result = (DataSynchronization.columnMatch(ds1, ds2, colKeyMap, compCols, assertion))
-      assert(result.isInstanceOf[ComparisonSucceeded])
+      val result = DataSynchronization.columnMatch(ds1, ds2, colKeyMap, compCols, assertion)
+      assert(result.isInstanceOf[DataSynchronizationSucceeded])
     }
 
     "match == 0.83 when id is colKey and state is compCols" in withSparkSession { spark =>
@@ -87,8 +87,8 @@ class DataSynchronizationTest extends AnyWordSpec with SparkContextSpec {
       val compCols = Map("state" -> "state")
       val assertion: Double => Boolean = _ >= 0.80
 
-      val result = (DataSynchronization.columnMatch(ds1, ds2, colKeyMap, compCols, assertion))
-      assert(result.isInstanceOf[ComparisonSucceeded])
+      val result = DataSynchronization.columnMatch(ds1, ds2, colKeyMap, compCols, assertion)
+      assert(result.isInstanceOf[DataSynchronizationSucceeded])
     }
 
     "return false because col name isn't unique" in withSparkSession { spark =>
@@ -118,8 +118,8 @@ class DataSynchronizationTest extends AnyWordSpec with SparkContextSpec {
       val compCols = Map("state" -> "state")
       val assertion: Double => Boolean = _ >= 0.66
 
-      val result = (DataSynchronization.columnMatch(ds1, ds2, colKeyMap, compCols, assertion))
-      assert(result.isInstanceOf[ComparisonFailed])
+      val result = DataSynchronization.columnMatch(ds1, ds2, colKeyMap, compCols, assertion)
+      assert(result.isInstanceOf[DataSynchronizationFailed])
     }
 
     "match >= 0.66 when id is unique col, rest compCols" in withSparkSession { spark =>
@@ -149,8 +149,8 @@ class DataSynchronizationTest extends AnyWordSpec with SparkContextSpec {
       val compCols = Map("name" -> "name", "state" -> "state")
       val assertion: Double => Boolean = _ >= 0.60
 
-      val result = (DataSynchronization.columnMatch(ds1, ds2, colKeyMap, compCols, assertion))
-      assert(result.isInstanceOf[ComparisonSucceeded])
+      val result = DataSynchronization.columnMatch(ds1, ds2, colKeyMap, compCols, assertion)
+      assert(result.isInstanceOf[DataSynchronizationSucceeded])
     }
 
     "match >= 0.66 (same test as above only the data sets change)" in withSparkSession{ spark =>
@@ -180,8 +180,8 @@ class DataSynchronizationTest extends AnyWordSpec with SparkContextSpec {
       val compCols = Map("name" -> "name", "state" -> "state")
       val assertion: Double => Boolean = _ >= 0.60
 
-      val result = (DataSynchronization.columnMatch(ds1, ds2, colKeyMap, compCols, assertion))
-      assert(result.isInstanceOf[ComparisonSucceeded])
+      val result = DataSynchronization.columnMatch(ds1, ds2, colKeyMap, compCols, assertion)
+      assert(result.isInstanceOf[DataSynchronizationSucceeded])
     }
 
     "return false because the id col in ds1 isn't unique" in withSparkSession { spark =>
@@ -212,8 +212,8 @@ class DataSynchronizationTest extends AnyWordSpec with SparkContextSpec {
       val compCols = Map("name" -> "name", "state" -> "state")
       val assertion: Double => Boolean = _ >= 0.40
 
-      val result = (DataSynchronization.columnMatch(ds1, ds2, colKeyMap, compCols, assertion))
-      assert(result.asInstanceOf[ComparisonFailed].errorMessage ==
+      val result = DataSynchronization.columnMatch(ds1, ds2, colKeyMap, compCols, assertion)
+      assert(result.asInstanceOf[DataSynchronizationFailed].errorMessage ==
         "The selected columns are not comparable due to duplicates present in the dataset." +
           "Comparison keys must be unique, but in Dataframe 1, there are 6 unique records and 7 rows, " +
           "and in Dataframe 2, there are 6 unique records and 6 rows, based on the combination of keys " +
@@ -248,8 +248,8 @@ class DataSynchronizationTest extends AnyWordSpec with SparkContextSpec {
       val compCols = Map("name" -> "name", "state" -> "state")
       val assertion: Double => Boolean = _ >= 0.40
 
-      val result = (DataSynchronization.columnMatch(ds1, ds2, colKeyMap, compCols, assertion))
-      assert(result.isInstanceOf[ComparisonFailed])
+      val result = DataSynchronization.columnMatch(ds1, ds2, colKeyMap, compCols, assertion)
+      assert(result.isInstanceOf[DataSynchronizationFailed])
     }
 
     "return false because col state isn't unique" in withSparkSession { spark =>
@@ -280,7 +280,7 @@ class DataSynchronizationTest extends AnyWordSpec with SparkContextSpec {
       val assertion: Double => Boolean = _ >= 0.66
 
       val result = (DataSynchronization.columnMatch(ds1, ds2, colKeyMap, compCols, assertion))
-      assert(result.isInstanceOf[ComparisonFailed])
+      assert(result.isInstanceOf[DataSynchronizationFailed])
     }
 
     "check all columns and return an assertion of .66" in withSparkSession { spark =>
@@ -309,8 +309,8 @@ class DataSynchronizationTest extends AnyWordSpec with SparkContextSpec {
       val colKeyMap = Map("id" -> "id")
       val assertion: Double => Boolean = _ >= 0.66
 
-      val result = (DataSynchronization.columnMatch(ds1, ds2, colKeyMap, assertion))
-      assert(result.isInstanceOf[ComparisonSucceeded])
+      val result = DataSynchronization.columnMatch(ds1, ds2, colKeyMap, assertion)
+      assert(result.isInstanceOf[DataSynchronizationSucceeded])
     }
 
     "return false because state column isn't unique" in withSparkSession { spark =>
@@ -339,8 +339,8 @@ class DataSynchronizationTest extends AnyWordSpec with SparkContextSpec {
       val colKeyMap = Map("state" -> "state")
       val assertion: Double => Boolean = _ >= 0.66
 
-      val result = (DataSynchronization.columnMatch(ds1, ds2, colKeyMap, assertion))
-      assert(result.isInstanceOf[ComparisonFailed])
+      val result = DataSynchronization.columnMatch(ds1, ds2, colKeyMap, assertion)
+      assert(result.isInstanceOf[DataSynchronizationFailed])
     }
 
     "check all columns" in withSparkSession { spark =>
@@ -369,8 +369,8 @@ class DataSynchronizationTest extends AnyWordSpec with SparkContextSpec {
       val colKeyMap = Map("id" -> "id")
       val assertion: Double => Boolean = _ >= 0.66
 
-      val result = (DataSynchronization.columnMatch(ds1, ds2, colKeyMap, assertion))
-      assert(result.isInstanceOf[ComparisonSucceeded])
+      val result = DataSynchronization.columnMatch(ds1, ds2, colKeyMap, assertion)
+      assert(result.isInstanceOf[DataSynchronizationSucceeded])
     }
     "cols exist but 0 matches" in withSparkSession { spark =>
       import spark.implicits._
@@ -398,8 +398,8 @@ class DataSynchronizationTest extends AnyWordSpec with SparkContextSpec {
       val colKeyMap = Map("id" -> "id")
       val assertion: Double => Boolean = _ >= 0
 
-      val result = (DataSynchronization.columnMatch(ds1, ds2, colKeyMap, assertion))
-      assert(result.isInstanceOf[ComparisonSucceeded])
+      val result = DataSynchronization.columnMatch(ds1, ds2, colKeyMap, assertion)
+      assert(result.isInstanceOf[DataSynchronizationSucceeded])
     }
   }
 
@@ -594,6 +594,214 @@ class DataSynchronizationTest extends AnyWordSpec with SparkContextSpec {
 
       val expected = Map(1 -> true, 2 -> true, 3 -> true, 4 -> false, 5 -> false, 6 -> false)
       assert(expected == rowLevelResults)
+    }
+  }
+
+  "Data Synchronization Schema Test for non key columns" should {
+    def primaryDataset(spark: SparkSession, idColumnName: String): DataFrame = {
+      import spark.implicits._
+      spark.sparkContext.parallelize(
+        Seq(
+          (1, "John", "NY"),
+          (2, "Javier", "WI"),
+          (3, "Helena", "TX"),
+          (4, "Helena", "TX"),
+          (5, "Nick", "FL"),
+          (6, "Molly", "TX")
+        )
+      ).toDF(idColumnName, "name", "state") // all lower case
+    }
+
+    def referenceDataset(spark: SparkSession, idColumnName: String): DataFrame = {
+      import spark.implicits._
+      spark.sparkContext.parallelize(
+        Seq(
+          (1, "John", "NY"),
+          (2, "Javier", "WI"),
+          (3, "Helena", "TX"),
+          (4, "Helena", "TX"),
+          (5, "Nicholas", "FL"),
+          (6, "Ms Molly", "TX")
+        )
+      ).toDF(idColumnName, "Name", "State") // upper case except for id
+    }
+
+    "works when key column names have different casings" in withSparkSession { spark =>
+      val id1ColumnName = "id"
+      val id2ColumnName = "ID"
+      val ds1 = primaryDataset(spark, id1ColumnName)
+      val ds2 = referenceDataset(spark, id2ColumnName)
+
+      // Not using id1ColumnName -> id2ColumnName intentionally.
+      // In Glue DQ, we accept the column names in two formats: mapping and non-mapping
+      // Mapping format is "col1 -> col2", when customer wants to compare columns with different names.
+      // Non-mapping format is just "col1", when customer has same column, regardless of case, in both datasets.
+      // A non-mapping format would translate it into the map below.
+      // We want to test that the functionality works as expected in that case.
+      val colKeyMap = Map(id1ColumnName -> id1ColumnName)
+
+      // Overall
+      val assertion: Double => Boolean = _ >= 0.6 // 4 out of 6 rows match
+      val overallResult = DataSynchronization.columnMatch(ds1, ds2, colKeyMap, assertion)
+      assert(overallResult.isInstanceOf[DataSynchronizationSucceeded])
+
+      // Row Level
+      val outcomeColName = "outcome"
+      val rowLevelResult = DataSynchronization.columnMatchRowLevel(ds1, ds2, colKeyMap, None, Some(outcomeColName))
+
+      assert(rowLevelResult.isRight)
+
+      val dfResult = rowLevelResult.right.get
+      val rowLevelResults = dfResult.collect().map { row =>
+        row.getAs[Int]("id") -> row.getAs[Boolean](outcomeColName)
+      }.toMap
+
+      val expected = Map(1 -> true, 2 -> true, 3 -> true, 4 -> true, 5 -> false, 6 -> false)
+      assert(expected == rowLevelResults)
+    }
+
+    "works when non-key column names have different casings" in withSparkSession { spark =>
+      val idColumnName = "id"
+      val ds1 = primaryDataset(spark, idColumnName)
+      val ds2 = referenceDataset(spark, idColumnName)
+
+      val colKeyMap = Map(idColumnName -> idColumnName)
+
+      // Overall
+      val assertion: Double => Boolean = _ >= 0.6 // 4 out of 6 rows match
+      val overallResult = DataSynchronization.columnMatch(ds1, ds2, colKeyMap, assertion)
+      assert(overallResult.isInstanceOf[DataSynchronizationSucceeded])
+
+      // Row Level
+      val outcomeColName = "outcome"
+      val rowLevelResult = DataSynchronization.columnMatchRowLevel(ds1, ds2, colKeyMap, None, Some(outcomeColName))
+
+      assert(rowLevelResult.isRight)
+
+      val dfResult = rowLevelResult.right.get
+      val rowLevelResults = dfResult.collect().map { row =>
+        row.getAs[Int]("id") -> row.getAs[Boolean](outcomeColName)
+      }.toMap
+
+      val expected = Map(1 -> true, 2 -> true, 3 -> true, 4 -> true, 5 -> false, 6 -> false)
+      assert(expected == rowLevelResults)
+    }
+
+    "fails as expected when key columns do not exist" in withSparkSession { spark =>
+      val idColumnName = "id"
+      val ds1 = primaryDataset(spark, idColumnName)
+      val ds2 = referenceDataset(spark, idColumnName)
+      val assertion: Double => Boolean = _ >= 0.6 // 4 out of 6 rows match
+
+      val nonExistCol1 = "foo"
+      val nonExistCol2 = "bar"
+
+      // Key columns not in either dataset (Overall)
+      val colKeyMap1 = Map(nonExistCol1 -> nonExistCol2)
+      val overallResult1 = DataSynchronization.columnMatch(ds1, ds2, colKeyMap1, assertion)
+
+      assert(overallResult1.isInstanceOf[DataSynchronizationFailed])
+      val failedOverallResult1 = overallResult1.asInstanceOf[DataSynchronizationFailed]
+      assert(failedOverallResult1.errorMessage.contains("key columns were not found in the first dataset"))
+      assert(failedOverallResult1.errorMessage.contains(nonExistCol1))
+
+      // Key columns not in either dataset (Row level)
+      val rowLevelResult1 = DataSynchronization.columnMatchRowLevel(ds1, ds2, colKeyMap1)
+      assert(rowLevelResult1.isLeft)
+      val failedRowLevelResult1 = rowLevelResult1.left.get
+      assert(failedRowLevelResult1.errorMessage.contains("key columns were not found in the first dataset"))
+      assert(failedRowLevelResult1.errorMessage.contains(nonExistCol1))
+
+      // Key column not in first dataset
+      val colKeyMap2 = Map(nonExistCol1 -> idColumnName)
+      val overallResult2 = DataSynchronization.columnMatch(ds1, ds2, colKeyMap2, assertion)
+
+      assert(overallResult2.isInstanceOf[DataSynchronizationFailed])
+      val failedOverallResult2 = overallResult2.asInstanceOf[DataSynchronizationFailed]
+      assert(failedOverallResult2.errorMessage.contains("key columns were not found in the first dataset"))
+      assert(failedOverallResult2.errorMessage.contains(nonExistCol1))
+
+      // Key column not in first dataset (Row level)
+      val rowLevelResult2 = DataSynchronization.columnMatchRowLevel(ds1, ds2, colKeyMap2)
+      assert(rowLevelResult2.isLeft)
+      val failedRowLevelResult2 = rowLevelResult2.left.get
+      assert(failedRowLevelResult2.errorMessage.contains("key columns were not found in the first dataset"))
+      assert(failedRowLevelResult2.errorMessage.contains(nonExistCol1))
+
+      // Key column not in second dataset
+      val colKeyMap3 = Map(idColumnName -> nonExistCol2)
+      val overallResult3 = DataSynchronization.columnMatch(ds1, ds2, colKeyMap3, assertion)
+
+      assert(overallResult3.isInstanceOf[DataSynchronizationFailed])
+      val failedOverallResult3 = overallResult3.asInstanceOf[DataSynchronizationFailed]
+      assert(failedOverallResult3.errorMessage.contains("key columns were not found in the second dataset"))
+      assert(failedOverallResult3.errorMessage.contains(nonExistCol2))
+
+      // Key column not in second dataset (Row level)
+      val rowLevelResult3 = DataSynchronization.columnMatchRowLevel(ds1, ds2, colKeyMap3)
+      assert(rowLevelResult3.isLeft)
+      val failedRowLevelResult3 = rowLevelResult3.left.get
+      assert(failedRowLevelResult3.errorMessage.contains("key columns were not found in the second dataset"))
+      assert(failedRowLevelResult3.errorMessage.contains(nonExistCol2))
+    }
+
+    "fails as expected when non-key columns do not exist" in withSparkSession { spark =>
+      val idColumnName = "id"
+      val ds1 = primaryDataset(spark, idColumnName)
+      val ds2 = referenceDataset(spark, idColumnName)
+      val assertion: Double => Boolean = _ >= 0.6 // 4 out of 6 rows match
+      val colKeyMap = Map(idColumnName -> idColumnName)
+
+      val nonExistCol1 = "foo"
+      val nonExistCol2 = "bar"
+
+      // Non-key columns not in either dataset (Overall)
+      val compColsMap1 = Map(nonExistCol1 -> nonExistCol2)
+      val overallResult1 = DataSynchronization.columnMatch(ds1, ds2, colKeyMap, compColsMap1, assertion)
+
+      assert(overallResult1.isInstanceOf[DataSynchronizationFailed])
+      val failedOverallResult1 = overallResult1.asInstanceOf[DataSynchronizationFailed]
+      assert(failedOverallResult1.errorMessage.contains(
+        s"The following columns were not found in the first dataset: $nonExistCol1"))
+
+      // Non-key columns not in either dataset (Row level)
+      val rowLevelResult1 = DataSynchronization.columnMatchRowLevel(ds1, ds2, colKeyMap, Some(compColsMap1))
+      assert(rowLevelResult1.isLeft)
+      val failedRowLevelResult1 = rowLevelResult1.left.get
+      assert(failedRowLevelResult1.errorMessage.contains(
+        s"The following columns were not found in the first dataset: $nonExistCol1"))
+
+      // Non-key column not in first dataset
+      val compColsMap2 = Map(nonExistCol1 -> "State")
+      val overallResult2 = DataSynchronization.columnMatch(ds1, ds2, colKeyMap, compColsMap2, assertion)
+
+      assert(overallResult2.isInstanceOf[DataSynchronizationFailed])
+      val failedOverallResult2 = overallResult2.asInstanceOf[DataSynchronizationFailed]
+      assert(failedOverallResult2.errorMessage.contains(
+        s"The following columns were not found in the first dataset: $nonExistCol1"))
+
+      // Non-key columns not in first dataset (Row level)
+      val rowLevelResult2 = DataSynchronization.columnMatchRowLevel(ds1, ds2, colKeyMap, Some(compColsMap2))
+      assert(rowLevelResult2.isLeft)
+      val failedRowLevelResult2 = rowLevelResult2.left.get
+      assert(failedRowLevelResult2.errorMessage.contains(
+        s"The following columns were not found in the first dataset: $nonExistCol1"))
+
+      // Non-key column not in second dataset
+      val compColsMap3 = Map("state" -> nonExistCol2)
+      val overallResult3 = DataSynchronization.columnMatch(ds1, ds2, colKeyMap, compColsMap3, assertion)
+
+      assert(overallResult3.isInstanceOf[DataSynchronizationFailed])
+      val failedOverallResult3 = overallResult3.asInstanceOf[DataSynchronizationFailed]
+      assert(failedOverallResult3.errorMessage.contains(
+        s"The following columns were not found in the second dataset: $nonExistCol2"))
+
+      // Non-key column not in second dataset (Row level)
+      val rowLevelResult3 = DataSynchronization.columnMatchRowLevel(ds1, ds2, colKeyMap, Some(compColsMap3))
+      assert(rowLevelResult3.isLeft)
+      val failedRowLevelResult3 = rowLevelResult3.left.get
+      assert(failedRowLevelResult3.errorMessage.contains(
+        s"The following columns were not found in the second dataset: $nonExistCol2"))
     }
   }
 }

@@ -1,5 +1,5 @@
 /**
-  * Copyright 2018 Amazon.com, Inc. or its affiliates. All Rights Reserved.
+  * Copyright 2023 Amazon.com, Inc. or its affiliates. All Rights Reserved.
   *
   * Licensed under the Apache License, Version 2.0 (the "License"). You may not
   * use this file except in compliance with the License. A copy of the License
@@ -25,11 +25,12 @@ import com.amazon.deequ.metrics.{DoubleMetric, Entity}
 import com.amazon.deequ.repository.memory.InMemoryMetricsRepository
 import com.amazon.deequ.repository.{MetricsRepository, ResultKey}
 import com.amazon.deequ.utils.FixtureSupport
+import org.apache.spark.sql.functions.{col, when}
 import org.apache.spark.sql.types._
 import org.apache.spark.sql.{DataFrame, Row, SparkSession}
 import org.scalamock.scalatest.MockFactory
-import org.scalatest.wordspec.AnyWordSpec
 import org.scalatest.matchers.should.Matchers
+import org.scalatest.wordspec.AnyWordSpec
 
 import scala.util.{Success, Try}
 
@@ -583,7 +584,7 @@ class CheckTest extends AnyWordSpec with Matchers with SparkContextSpec with Fix
       val numericAnalysis = AnalysisRunner.onData(dfNumeric).addAnalyzers(Seq(
         Minimum("att1"), Maximum("att1"), Mean("att1"), Sum("att1"),
         StandardDeviation("att1"), ApproxCountDistinct("att1"),
-        ApproxQuantile("att1", quantile = 0.5)))
+        ApproxQuantile("att1", quantile = 0.5), ExactQuantile("att1", quantile = 0.5)))
 
       val contextNumeric = numericAnalysis.run()
 
@@ -594,6 +595,7 @@ class CheckTest extends AnyWordSpec with Matchers with SparkContextSpec with Fix
       assertSuccess(baseCheck.hasStandardDeviation("att1", _ == 1.707825127659933), contextNumeric)
       assertSuccess(baseCheck.hasApproxCountDistinct("att1", _ == 6.0), contextNumeric)
       assertSuccess(baseCheck.hasApproxQuantile("att1", quantile = 0.5, _ == 3.0), contextNumeric)
+      assertSuccess(baseCheck.hasExactQuantile("att1", quantile = 0.5, _ == 3.5), contextNumeric)
 
       val correlationAnalysisInformative = AnalysisRunner.onData(dfInformative)
         .addAnalyzer(Correlation("att1", "att2"))
@@ -632,6 +634,19 @@ class CheckTest extends AnyWordSpec with Matchers with SparkContextSpec with Fix
 
       assertSuccess(hasApproxQuantileCheck, context)
       assertSuccess(hasApproxQuantileCheckWithFilter, context)
+    }
+
+    "correctly evaluate hasExactQuantile constraints" in withSparkSession { sparkSession =>
+      val hasExactQuantileCheck = Check(CheckLevel.Error, "a")
+        .hasExactQuantile("att1", quantile = 0.5, _ == 3.5)
+      val hasExactQuantileCheckWithFilter = Check(CheckLevel.Error, "a")
+        .hasExactQuantile("att1", quantile = 0.5, _ == 5.0).where("att2 > 0")
+
+      val context = runChecks(getDfWithNumericValues(sparkSession), hasExactQuantileCheck,
+        hasExactQuantileCheckWithFilter)
+
+      assertSuccess(hasExactQuantileCheck, context)
+      assertSuccess(hasExactQuantileCheckWithFilter, context)
     }
 
     "yield correct results for minimum and maximum length stats" in
@@ -1091,6 +1106,131 @@ class CheckTest extends AnyWordSpec with Matchers with SparkContextSpec with Fix
           assert(sizeAnomalyCheck.evaluate(contextNoRows).status == CheckStatus.Error)
         }
       }
+  }
+
+  /**
+   * Test for DataSync in verification suite.
+   */
+  "Check hasDataInSync" should {
+
+    val colMapAtt1 = Map("att1" -> "att1")
+    val colMapTwoCols = Map("att1" -> "att1", "att2" -> "att2")
+
+    "yield success for basic data sync test for 1 col" in withSparkSession { sparkSession =>
+      val dfInformative = getDfWithConditionallyInformativeColumns(sparkSession)
+
+      val check = Check(CheckLevel.Error, "must have data in sync")
+        .isDataSynchronized(dfInformative, colMapAtt1, _ > 0.9, Some("show be in sync"))
+      val context = runChecks(dfInformative, check)
+
+      assertSuccess(check, context)
+    }
+
+    "yield failure when column doesnt exist in data sync test for 1 col" in withSparkSession { sparkSession =>
+      val dfInformative = getDfWithConditionallyInformativeColumns(sparkSession)
+      val dfInformativeRenamed = dfInformative.withColumnRenamed("att1", "att1_renamed")
+
+      val check = Check(CheckLevel.Error, "must fail as columns does not exist")
+        .isDataSynchronized(dfInformativeRenamed, colMapAtt1, _ > 0.9, Some("must fail as columns does not exist"))
+      val context = runChecks(dfInformative, check)
+      assertEvaluatesTo(check, context, CheckStatus.Error)
+      println(context)
+    }
+
+    "yield failure when row count varies in data sync test for 1 col" in withSparkSession { sparkSession =>
+      val dfInformative = getDfWithConditionallyInformativeColumns(sparkSession)
+      val dfInformativeFiltered = dfInformative.filter("att1 > 2")
+
+      val check = Check(CheckLevel.Error, "must fail as columns does not exist")
+        .isDataSynchronized(dfInformativeFiltered, colMapAtt1, _ > 0.9, Some("must fail as columns does not exist"))
+      val context = runChecks(dfInformative, check)
+      assertEvaluatesTo(check, context, CheckStatus.Error)
+    }
+
+    "yield failed assertion for 0.9 for 1 col" in withSparkSession { sparkSession =>
+      val df = getDfWithConditionallyInformativeColumns(sparkSession)
+      val modifiedDf = df.withColumn("att1", when(col("att1") === 3, 4)
+        .otherwise(col("att1")))
+
+      val check = Check(CheckLevel.Error, "must fail as rows mismatches")
+        .isDataSynchronized(modifiedDf, colMapAtt1, _ > 0.9, Some("must fail as rows mismatches"))
+      val context = runChecks(df, check)
+      assertEvaluatesTo(check, context, CheckStatus.Error)
+
+    }
+
+    "yield failed assertion for 0.6 for 1 col" in withSparkSession { sparkSession =>
+      val df = getDfWithConditionallyInformativeColumns(sparkSession)
+      val modifiedDf = df.withColumn("att1", when(col("att1") === 3, 4)
+        .otherwise(col("att1")))
+
+      val check = Check(CheckLevel.Error, "must be success as rows count mismatches at assertion 0.6")
+        .isDataSynchronized(modifiedDf, colMapAtt1, _ > 0.6,
+          Some("must be success as rows count mismatches at assertion 0.6"))
+      val context = runChecks(df, check)
+      assertSuccess(check, context)
+    }
+
+
+    "yield success for basic data sync test for multiple columns" in withSparkSession { sparkSession =>
+      val dfInformative = getDfWithConditionallyInformativeColumns(sparkSession)
+
+      val check = Check(CheckLevel.Error, "must have data in sync")
+        .isDataSynchronized(dfInformative, colMapTwoCols, _ > 0.9, Some("show be in sync"))
+      val context = runChecks(dfInformative, check)
+
+      assertSuccess(check, context)
+    }
+
+    "yield failure when column doesnt exist in data sync test for multiple columns" in withSparkSession {
+      sparkSession =>
+        val dfInformative = getDfWithConditionallyInformativeColumns(sparkSession)
+        val dfInformativeRenamed = dfInformative.withColumnRenamed("att1", "att1_renamed")
+
+        val check = Check(CheckLevel.Error, "must fail as columns does not exist")
+          .isDataSynchronized(dfInformativeRenamed, colMapTwoCols, _ > 0.9, Some("must fail as columns does not exist"))
+        val context = runChecks(dfInformative, check)
+
+        assertEvaluatesTo(check, context, CheckStatus.Error)
+    }
+
+    "yield failure when row count varies in data sync test for multiple columns" in withSparkSession { sparkSession =>
+      val dfInformative = getDfWithConditionallyInformativeColumns(sparkSession)
+      val dfInformativeFiltered = dfInformative.filter("att1 > 2")
+
+      val check = Check(CheckLevel.Error, "must fail as columns does not exist")
+        .isDataSynchronized(dfInformativeFiltered, colMapTwoCols, _ > 0.9, Some("must fail as columns does not exist"))
+      val context = runChecks(dfInformative, check)
+
+      assertEvaluatesTo(check, context, CheckStatus.Error)
+    }
+
+    "yield failed assertion for 0.9 for multiple columns" in withSparkSession { sparkSession =>
+      val df = getDfWithConditionallyInformativeColumns(sparkSession)
+      val modifiedDf = df.withColumn("att1", when(col("att1") === 3, 4)
+        .otherwise(col("att1")))
+
+      val check = Check(CheckLevel.Error, "must fail as rows mismatches")
+        .isDataSynchronized(modifiedDf, colMapTwoCols, _ > 0.9, Some("must fail as rows mismatches"))
+      val context = runChecks(df, check)
+
+      assertEvaluatesTo(check, context, CheckStatus.Error)
+
+    }
+
+    "yield failed assertion for 0.6 for multiple columns" in withSparkSession { sparkSession =>
+      val df = getDfWithConditionallyInformativeColumns(sparkSession)
+      val modifiedDf = df.withColumn("att1", when(col("att1") === 3, 4)
+        .otherwise(col("att1")))
+
+      val check = Check(CheckLevel.Error, "must be success as metric value is 0.66")
+        .isDataSynchronized(modifiedDf, colMapTwoCols, _ > 0.6,
+          Some("must be success as metric value is 0.66"))
+      val context = runChecks(df, check)
+
+      assertSuccess(check, context)
+    }
+
   }
 
   /** Run anomaly detection using a repository with some previous analysis results for testing */

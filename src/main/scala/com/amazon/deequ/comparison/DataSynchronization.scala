@@ -1,5 +1,5 @@
 /**
- * Copyright 2022 Amazon.com, Inc. or its affiliates. All Rights Reserved.
+ * Copyright 2024 Amazon.com, Inc. or its affiliates. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License"). You may not
  * use this file except in compliance with the License. A copy of the License
@@ -16,7 +16,8 @@
 
 package com.amazon.deequ.comparison
 
-import org.apache.spark.sql.{Column, DataFrame}
+import org.apache.spark.sql.Column
+import org.apache.spark.sql.DataFrame
 import org.apache.spark.sql.functions.col
 import org.apache.spark.sql.functions.hash
 import org.apache.spark.sql.functions.lit
@@ -96,17 +97,18 @@ object DataSynchronization extends ComparisonBase {
                   assertion: Double => Boolean): ComparisonResult = {
     val columnErrors = areKeyColumnsValid(ds1, ds2, colKeyMap)
     if (columnErrors.isEmpty) {
+      // Get all the non-key columns from DS1 and verify that they are present in DS2
       val colsDS1 = ds1.columns.filterNot(x => colKeyMap.keys.toSeq.contains(x)).sorted
-      val colsDS2 = ds2.columns.filterNot(x => colKeyMap.values.toSeq.contains(x)).sorted
+      val nonKeyColsMatch = colsDS1.forall(columnExists(ds2, _))
 
-      if (!(colsDS1 sameElements colsDS2)) {
-        ComparisonFailed("Non key columns in the given data frames do not match.")
+      if (!nonKeyColsMatch) {
+        DataSynchronizationFailed("Non key columns in the given data frames do not match.")
       } else {
         val mergedMaps = colKeyMap ++ colsDS1.map(x => x -> x).toMap
         finalAssertion(ds1, ds2, mergedMaps, assertion)
       }
     } else {
-      ComparisonFailed(columnErrors.get)
+      DataSynchronizationFailed(columnErrors.get)
     }
   }
 
@@ -130,12 +132,23 @@ object DataSynchronization extends ComparisonBase {
                   colKeyMap: Map[String, String],
                   compCols: Map[String, String],
                   assertion: Double => Boolean): ComparisonResult = {
-    val columnErrors = areKeyColumnsValid(ds1, ds2, colKeyMap)
-    if (columnErrors.isEmpty) {
-      val mergedMaps = colKeyMap ++ compCols
-      finalAssertion(ds1, ds2, mergedMaps, assertion)
+    val keyColumnErrors = areKeyColumnsValid(ds1, ds2, colKeyMap)
+    if (keyColumnErrors.isEmpty) {
+      val nonKeyColumns1NotInDataset = compCols.keys.filterNot(columnExists(ds1, _))
+      val nonKeyColumns2NotInDataset = compCols.values.filterNot(columnExists(ds2, _))
+
+      if (nonKeyColumns1NotInDataset.nonEmpty) {
+        DataSynchronizationFailed(s"The following columns were not found in the first dataset: " +
+          s"${nonKeyColumns1NotInDataset.mkString(", ")}")
+      } else if (nonKeyColumns2NotInDataset.nonEmpty) {
+        DataSynchronizationFailed(s"The following columns were not found in the second dataset: " +
+          s"${nonKeyColumns2NotInDataset.mkString(", ")}")
+      } else {
+        val mergedMaps = colKeyMap ++ compCols
+        finalAssertion(ds1, ds2, mergedMaps, assertion)
+      }
     } else {
-      ComparisonFailed(columnErrors.get)
+      DataSynchronizationFailed(keyColumnErrors.get)
     }
   }
 
@@ -143,19 +156,37 @@ object DataSynchronization extends ComparisonBase {
                           ds2: DataFrame,
                           colKeyMap: Map[String, String],
                           optionalCompCols: Option[Map[String, String]] = None,
-                          optionalOutcomeColumnName: Option[String] = None): Either[ComparisonFailed, DataFrame] = {
+                          optionalOutcomeColumnName: Option[String] = None):
+  Either[DataSynchronizationFailed, DataFrame] = {
     val columnErrors = areKeyColumnsValid(ds1, ds2, colKeyMap)
     if (columnErrors.isEmpty) {
-      val compColsEither: Either[ComparisonFailed, Map[String, String]] = if (optionalCompCols.isDefined) {
+      val compColsEither: Either[DataSynchronizationFailed, Map[String, String]] = if (optionalCompCols.isDefined) {
         optionalCompCols.get match {
-          case compCols if compCols.isEmpty => Left(ComparisonFailed("Empty column comparison map provided."))
-          case compCols => Right(compCols)
+          case compCols if compCols.isEmpty => Left(DataSynchronizationFailed("Empty column comparison map provided."))
+          case compCols =>
+            val ds1CompColsNotInDataset = compCols.keys.filterNot(columnExists(ds1, _))
+            val ds2CompColsNotInDataset = compCols.values.filterNot(columnExists(ds2, _))
+            if (ds1CompColsNotInDataset.nonEmpty) {
+              Left(
+                DataSynchronizationFailed(s"The following columns were not found in the first dataset: " +
+                  s"${ds1CompColsNotInDataset.mkString(", ")}")
+              )
+            } else if (ds2CompColsNotInDataset.nonEmpty) {
+              Left(
+                DataSynchronizationFailed(s"The following columns were not found in the second dataset: " +
+                  s"${ds2CompColsNotInDataset.mkString(", ")}")
+              )
+            } else {
+              Right(compCols)
+            }
         }
       } else {
+        // Get all the non-key columns from DS1 and verify that they are present in DS2
         val ds1NonKeyCols = ds1.columns.filterNot(x => colKeyMap.keys.toSeq.contains(x)).sorted
-        val ds2NonKeyCols = ds2.columns.filterNot(x => colKeyMap.values.toSeq.contains(x)).sorted
-        if (!(ds1NonKeyCols sameElements ds2NonKeyCols)) {
-          Left(ComparisonFailed("Non key columns in the given data frames do not match."))
+        val nonKeyColsMatch = ds1NonKeyCols.forall(columnExists(ds2, _))
+
+        if (!nonKeyColsMatch) {
+          Left(DataSynchronizationFailed("Non key columns in the given data frames do not match."))
         } else {
           Right(ds1NonKeyCols.map { c => c -> c}.toMap)
         }
@@ -167,41 +198,51 @@ object DataSynchronization extends ComparisonBase {
           case Success(df) => Right(df)
           case Failure(ex) =>
             ex.printStackTrace()
-            Left(ComparisonFailed(s"Comparison failed due to ${ex.getCause.getClass}"))
+            Left(DataSynchronizationFailed(s"Comparison failed due to ${ex.getCause.getClass}"))
         }
       }
     } else {
-      Left(ComparisonFailed(columnErrors.get))
+      Left(DataSynchronizationFailed(columnErrors.get))
     }
   }
 
   private def areKeyColumnsValid(ds1: DataFrame,
                                  ds2: DataFrame,
                                  colKeyMap: Map[String, String]): Option[String] = {
-    // We verify that the key columns provided form a valid primary/composite key.
-    // To achieve this, we group the dataframes and compare their count with the original count.
-    // If the key columns provided are valid, then the two counts should match.
     val ds1Cols = colKeyMap.keys.toSeq
     val ds2Cols = colKeyMap.values.toSeq
-    val ds1Unique = ds1.groupBy(ds1Cols.map(col): _*).count()
-    val ds2Unique = ds2.groupBy(ds2Cols.map(col): _*).count()
 
-    val ds1Count = ds1.count()
-    val ds2Count = ds2.count()
-    val ds1UniqueCount = ds1Unique.count()
-    val ds2UniqueCount = ds2Unique.count()
+    val ds1ColsNotInDataset = ds1Cols.filterNot(columnExists(ds1, _))
+    val ds2ColsNotInDataset = ds2Cols.filterNot(columnExists(ds2, _))
 
-    if (ds1UniqueCount == ds1Count && ds2UniqueCount == ds2Count) {
-      None
+    if (ds1ColsNotInDataset.nonEmpty) {
+      Some(s"The following key columns were not found in the first dataset: ${ds1ColsNotInDataset.mkString(", ")}")
+    } else if (ds2ColsNotInDataset.nonEmpty) {
+      Some(s"The following key columns were not found in the second dataset: ${ds2ColsNotInDataset.mkString(", ")}")
     } else {
-      val combo1 = ds1Cols.mkString(", ")
-      val combo2 = ds2Cols.mkString(", ")
-      Some(s"The selected columns are not comparable due to duplicates present in the dataset." +
-        s"Comparison keys must be unique, but " +
-        s"in Dataframe 1, there are $ds1UniqueCount unique records and $ds1Count rows," +
-        s" and " +
-        s"in Dataframe 2, there are $ds2UniqueCount unique records and $ds2Count rows, " +
-        s"based on the combination of keys {$combo1} in Dataframe 1 and {$combo2} in Dataframe 2")
+      // We verify that the key columns provided form a valid primary/composite key.
+      // To achieve this, we group the dataframes and compare their count with the original count.
+      // If the key columns provided are valid, then the two counts should match.
+      val ds1Unique = ds1.groupBy(ds1Cols.map(col): _*).count()
+      val ds2Unique = ds2.groupBy(ds2Cols.map(col): _*).count()
+
+      val ds1Count = ds1.count()
+      val ds2Count = ds2.count()
+      val ds1UniqueCount = ds1Unique.count()
+      val ds2UniqueCount = ds2Unique.count()
+
+      if (ds1UniqueCount == ds1Count && ds2UniqueCount == ds2Count) {
+        None
+      } else {
+        val combo1 = ds1Cols.mkString(", ")
+        val combo2 = ds2Cols.mkString(", ")
+        Some(s"The selected columns are not comparable due to duplicates present in the dataset." +
+          s"Comparison keys must be unique, but " +
+          s"in Dataframe 1, there are $ds1UniqueCount unique records and $ds1Count rows," +
+          s" and " +
+          s"in Dataframe 2, there are $ds2UniqueCount unique records and $ds2Count rows, " +
+          s"based on the combination of keys {$combo1} in Dataframe 1 and {$combo2} in Dataframe 2")
+      }
     }
   }
 
@@ -214,19 +255,22 @@ object DataSynchronization extends ComparisonBase {
     val ds2Count = ds2.count()
 
     if (ds1Count != ds2Count) {
-      ComparisonFailed(s"The row counts of the two data frames do not match.")
+      DataSynchronizationFailed(s"The row counts of the two data frames do not match.")
     } else {
       val joinExpression: Column = mergedMaps
         .map { case (col1, col2) => ds1(col1) === ds2(col2)}
         .reduce((e1, e2) => e1 && e2)
 
       val joined = ds1.join(ds2, joinExpression, "inner")
-      val ratio = joined.count().toDouble / ds1Count
+      val passedCount = joined.count()
+      val totalCount = ds1Count
+      val ratio = passedCount.toDouble / totalCount.toDouble
 
       if (assertion(ratio)) {
-        ComparisonSucceeded()
+        DataSynchronizationSucceeded(passedCount, totalCount)
       } else {
-        ComparisonFailed(s"Value: $ratio does not meet the constraint requirement.")
+        DataSynchronizationFailed(s"Data Synchronization Comparison Metric Value: $ratio does not meet the constraint" +
+          s"requirement.", Some(passedCount), Some(totalCount))
       }
     }
   }
@@ -288,4 +332,6 @@ object DataSynchronization extends ComparisonBase {
       .drop(ds2HashColName)
       .drop(ds2KeyColsUpdatedNamesMap.values.toSeq: _*)
   }
+
+  private def columnExists(df: DataFrame, col: String) = Try { df(col) }.isSuccess
 }
