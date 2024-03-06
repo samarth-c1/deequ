@@ -159,7 +159,6 @@ class VerificationRunBuilder(val data: DataFrame) {
     new VerificationRunBuilderWithSparkSession(this, Option(sparkSession))
   }
 
-
   def run(): VerificationResult = {
     VerificationSuite().doVerificationRun(
       data,

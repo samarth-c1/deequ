@@ -17,6 +17,7 @@
 package com.amazon.deequ.analyzers
 
 import com.amazon.deequ.analyzers.Analyzers._
+import com.amazon.deequ.analyzers.FilteredRowOutcome.FilteredRowOutcome
 import com.amazon.deequ.analyzers.NullBehavior.NullBehavior
 import com.amazon.deequ.analyzers.runners._
 import com.amazon.deequ.metrics.DoubleMetric
@@ -69,7 +70,7 @@ trait Analyzer[S <: State[_], +M <: Metric[_]] extends Serializable {
     * @param data data frame
     * @return
     */
-  def computeStateFrom(data: DataFrame): Option[S]
+  def computeStateFrom(data: DataFrame, filterCondition: Option[String] = None): Option[S]
 
   /**
     * Compute the metric from the state (sufficient statistics)
@@ -97,13 +98,14 @@ trait Analyzer[S <: State[_], +M <: Metric[_]] extends Serializable {
   def calculate(
       data: DataFrame,
       aggregateWith: Option[StateLoader] = None,
-      saveStatesWith: Option[StatePersister] = None)
+      saveStatesWith: Option[StatePersister] = None,
+      filterCondition: Option[String] = None)
     : M = {
 
     try {
       preconditions.foreach { condition => condition(data.schema) }
 
-      val state = computeStateFrom(data)
+      val state = computeStateFrom(data, filterCondition)
 
       calculateMetric(state, aggregateWith, saveStatesWith)
     } catch {
@@ -171,6 +173,11 @@ trait Analyzer[S <: State[_], +M <: Metric[_]] extends Serializable {
     source.load[S](this).foreach { state => target.persist(this, state) }
   }
 
+  private[deequ] def getRowLevelFilterTreatment(analyzerOptions: Option[AnalyzerOptions]): FilteredRowOutcome = {
+    analyzerOptions
+      .map { options => options.filteredRow }
+      .getOrElse(FilteredRowOutcome.TRUE)
+  }
 }
 
 /** An analyzer that runs a set of aggregation functions over the data,
@@ -184,7 +191,7 @@ trait ScanShareableAnalyzer[S <: State[_], +M <: Metric[_]] extends Analyzer[S, 
   private[deequ] def fromAggregationResult(result: Row, offset: Int): Option[S]
 
   /** Runs aggregation functions directly, without scan sharing */
-  override def computeStateFrom(data: DataFrame): Option[S] = {
+  override def computeStateFrom(data: DataFrame, where: Option[String] = None): Option[S] = {
     val aggregations = aggregationFunctions()
     val result = data.agg(aggregations.head, aggregations.tail: _*).collect().head
     fromAggregationResult(result, 0)
@@ -255,10 +262,20 @@ case class NumMatchesAndCount(numMatches: Long, count: Long, override val fullCo
   }
 }
 
-case class AnalyzerOptions(nullBehavior: NullBehavior = NullBehavior.Ignore)
+case class AnalyzerOptions(nullBehavior: NullBehavior = NullBehavior.Ignore,
+                           filteredRow: FilteredRowOutcome = FilteredRowOutcome.TRUE)
 object NullBehavior extends Enumeration {
   type NullBehavior = Value
   val Ignore, EmptyString, Fail = Value
+}
+
+object FilteredRowOutcome extends Enumeration {
+  type FilteredRowOutcome = Value
+  val NULL, TRUE = Value
+
+  implicit class FilteredRowOutcomeOps(value: FilteredRowOutcome) {
+    def getExpression: Column = expr(value.toString)
+  }
 }
 
 /** Base class for analyzers that compute ratios of matching predicates */
@@ -477,6 +494,12 @@ private[deequ] object Analyzers {
       .getOrElse(selection)
   }
 
+  def conditionSelectionGivenColumn(selection: Column, where: Option[Column], replaceWith: Boolean): Column = {
+    where
+      .map { condition => when(condition, replaceWith).otherwise(selection) }
+      .getOrElse(selection)
+  }
+
   def conditionalSelection(selection: Column, where: Option[String], replaceWith: Double): Column = {
     conditionSelectionGivenColumn(selection, where.map(expr), replaceWith)
   }
@@ -488,6 +511,18 @@ private[deequ] object Analyzers {
   def conditionalSelection(selection: Column, condition: Option[String]): Column = {
     val conditionColumn = condition.map { expression => expr(expression) }
     conditionalSelectionFromColumns(selection, conditionColumn)
+  }
+
+  def conditionalSelectionFilteredFromColumns(
+                                       selection: Column,
+                                       conditionColumn: Option[Column],
+                                       filterTreatment: FilteredRowOutcome)
+  : Column = {
+    conditionColumn
+      .map { condition =>
+        when(not(condition), filterTreatment.getExpression).when(condition, selection)
+      }
+      .getOrElse(selection)
   }
 
   private[this] def conditionalSelectionFromColumns(

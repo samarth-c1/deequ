@@ -192,15 +192,17 @@ object Constraint {
     * @param assertion Function that receives a double input parameter (since the metric is
     *                  double metric) and returns a boolean
     * @param hint A hint to provide additional context why a constraint could have failed
+    * @param analyzerOptions Options to configure analyzer behavior (NullTreatment, FilteredRow)
     */
   def completenessConstraint(
       column: String,
       assertion: Double => Boolean,
       where: Option[String] = None,
-      hint: Option[String] = None)
+      hint: Option[String] = None,
+      analyzerOptions: Option[AnalyzerOptions] = None)
     : Constraint = {
 
-    val completeness = Completeness(column, where)
+    val completeness = Completeness(column, where, analyzerOptions)
 
     this.fromAnalyzer(completeness, assertion, hint)
   }
@@ -242,15 +244,17 @@ object Constraint {
     *                  (since the metric is double metric) and returns a boolean
     * @param where Additional filter to apply before the analyzer is run.
     * @param hint A hint to provide additional context why a constraint could have failed
+    * @param analyzerOptions Options to configure analyzer behavior (NullTreatment, FilteredRow)
     */
   def uniquenessConstraint(
       columns: Seq[String],
       assertion: Double => Boolean,
       where: Option[String] = None,
-      hint: Option[String] = None)
+      hint: Option[String] = None,
+      analyzerOptions: Option[AnalyzerOptions] = None)
     : Constraint = {
 
-    val uniqueness = Uniqueness(columns, where)
+    val uniqueness = Uniqueness(columns, where, analyzerOptions)
 
     fromAnalyzer(uniqueness, assertion, hint)
   }
@@ -300,15 +304,17 @@ object Constraint {
     *                  (since the metric is double metric) and returns a boolean
     * @param where Additional filter to apply before the analyzer is run.
     * @param hint A hint to provide additional context why a constraint could have failed
+    * @param analyzerOptions Options to configure analyzer behavior (NullTreatment, FilteredRow)
     */
   def uniqueValueRatioConstraint(
       columns: Seq[String],
       assertion: Double => Boolean,
       where: Option[String] = None,
-      hint: Option[String] = None)
+      hint: Option[String] = None,
+      analyzerOptions: Option[AnalyzerOptions] = None)
     : Constraint = {
 
-    val uniqueValueRatio = UniqueValueRatio(columns, where)
+    val uniqueValueRatio = UniqueValueRatio(columns, where, analyzerOptions)
     fromAnalyzer(uniqueValueRatio, assertion, hint)
   }
 
@@ -332,6 +338,7 @@ object Constraint {
     *             metrics for the analysis being done.
     * @param column Data frame column which is a combination of expression and the column name
     * @param hint A hint to provide additional context why a constraint could have failed
+    * @param analyzerOptions Options to configure analyzer behavior (NullTreatment, FilteredRow)
     */
   def complianceConstraint(
       name: String,
@@ -339,10 +346,11 @@ object Constraint {
       assertion: Double => Boolean,
       where: Option[String] = None,
       hint: Option[String] = None,
-      columns: List[String] = List.empty[String])
+      columns: List[String] = List.empty[String],
+      analyzerOptions: Option[AnalyzerOptions] = None)
     : Constraint = {
 
-    val compliance = Compliance(name, column, where, columns)
+    val compliance = Compliance(name, column, where, columns, analyzerOptions)
 
     fromAnalyzer(compliance, assertion, hint)
   }
@@ -367,6 +375,7 @@ object Constraint {
     * @param pattern The regex pattern to check compliance for
     * @param column  Data frame column which is a combination of expression and the column name
     * @param hint    A hint to provide additional context why a constraint could have failed
+    * @param analyzerOptions Options to configure analyzer behavior (NullTreatment, FilteredRow)
     */
   def patternMatchConstraint(
       column: String,
@@ -374,10 +383,11 @@ object Constraint {
       assertion: Double => Boolean,
       where: Option[String] = None,
       name: Option[String] = None,
-      hint: Option[String] = None)
+      hint: Option[String] = None,
+      analyzerOptions: Option[AnalyzerOptions] = None)
     : Constraint = {
 
-    val patternMatch = PatternMatch(column, pattern, where)
+    val patternMatch = PatternMatch(column, pattern, where, analyzerOptions)
 
     fromAnalyzer(patternMatch, pattern, assertion, name, hint)
   }
@@ -528,6 +538,7 @@ object Constraint {
     * @param column Column to run the assertion on
     * @param assertion Function that receives a double input parameter and returns a boolean
     * @param hint    A hint to provide additional context why a constraint could have failed
+    * @param analyzerOptions Options to configure analyzer behavior (NullTreatment, FilteredRow)
     */
   def maxLengthConstraint(
       column: String,
@@ -562,6 +573,7 @@ object Constraint {
     * @param column Column to run the assertion on
     * @param assertion Function that receives a double input parameter and returns a boolean
     * @param hint    A hint to provide additional context why a constraint could have failed
+    * @param analyzerOptions Options to configure analyzer behavior (NullTreatment, FilteredRow)
     */
   def minLengthConstraint(
       column: String,
@@ -596,16 +608,18 @@ object Constraint {
     * @param column Column to run the assertion on
     * @param assertion Function that receives a double input parameter and returns a boolean
     * @param hint    A hint to provide additional context why a constraint could have failed
+    * @param analyzerOptions Options to configure analyzer behavior (NullTreatment, FilteredRow)
     *
     */
   def minConstraint(
       column: String,
       assertion: Double => Boolean,
       where: Option[String] = None,
-      hint: Option[String] = None)
+      hint: Option[String] = None,
+      analyzerOptions: Option[AnalyzerOptions] = None)
     : Constraint = {
 
-    val minimum = Minimum(column, where)
+    val minimum = Minimum(column, where, analyzerOptions)
 
     fromAnalyzer(minimum, assertion, hint)
   }
@@ -629,15 +643,17 @@ object Constraint {
     * @param column Column to run the assertion on
     * @param assertion Function that receives a double input parameter and returns a boolean
     * @param hint    A hint to provide additional context why a constraint could have failed
+    * @param analyzerOptions Options to configure analyzer behavior (NullTreatment, FilteredRow)
     */
   def maxConstraint(
       column: String,
       assertion: Double => Boolean,
       where: Option[String] = None,
-      hint: Option[String] = None)
+      hint: Option[String] = None,
+      analyzerOptions: Option[AnalyzerOptions] = None)
     : Constraint = {
 
-    val maximum = Maximum(column, where)
+    val maximum = Maximum(column, where, analyzerOptions)
 
     fromAnalyzer(maximum, assertion, hint)
   }
@@ -903,17 +919,17 @@ object Constraint {
 }
 
 /**
- * Data Synchronization Constraint
+ * DatasetMatch Constraint
  * @param analyzer Data Synchronization Analyzer
  * @param hint hint
  */
-case class DataSynchronizationConstraint(analyzer: DataSynchronizationAnalyzer, hint: Option[String])
+case class DatasetMatchConstraint(analyzer: DatasetMatchAnalyzer, hint: Option[String])
   extends Constraint {
 
   override def evaluate(metrics: Map[Analyzer[_, Metric[_]], Metric[_]]): ConstraintResult = {
 
     metrics.collectFirst {
-      case (_: DataSynchronizationAnalyzer, metric: Metric[Double]) => metric
+      case (_: DatasetMatchAnalyzer, metric: Metric[Double]) => metric
     } match {
       case Some(metric) =>
         val result = metric.value match {
